@@ -30,20 +30,23 @@ message_history = {}
 
 # Function to call Together AI API
 def get_together_response(messages):
-    url = "https://api.together.xyz/v1/chat/completions"
+    url = "https://api.together.xyz/v1/chat/completions"  # ✅ Correct API endpoint
     headers = {
         "Authorization": f"Bearer {TOGETHER_API_KEY}",
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "mistralai/Mistral-7B-Instruct",  # Other options: "meta-llama/Llama-3-8B-Instruct"
+        "model": "mistralai/Mistral-7B-Instruct",  # ✅ Correct model name
         "messages": messages
     }
 
     try:
         response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()
+        response.raise_for_status()  # Raise HTTP errors if any
         return response.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        logging.error(f"Together AI API Error: {e.response.status_code} - {e.response.text}")
+        return f"⚠️ API Error: {e.response.status_code} - {e.response.text} ⚠️"
     except requests.exceptions.RequestException as e:
         logging.error(f"Together AI API Error: {e}")
         return "⚠️ Error generating response. Please try again later. ⚠️"
