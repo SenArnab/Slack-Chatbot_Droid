@@ -22,21 +22,21 @@ slack_app = App(
 )
 handler = SlackRequestHandler(slack_app)
 
-# DeepSeek API Key
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+# Together AI API Key
+TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY")
 
 # In-memory storage for message history (replace with a database in production)
 message_history = {}
 
-# Function to call DeepSeek API
-def get_deepseek_response(messages):
-    url = "https://api.deepseek.com/v1/chat/completions"
+# Function to call Together AI API
+def get_together_response(messages):
+    url = "https://api.together.xyz/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Authorization": f"Bearer {TOGETHER_API_KEY}",
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "deepseek-chat",  # Or use "deepseek-coder" for coding tasks
+        "model": "mistralai/Mistral-7B-Instruct",  # Other options: "meta-llama/Llama-3-8B-Instruct"
         "messages": messages
     }
 
@@ -45,7 +45,7 @@ def get_deepseek_response(messages):
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
     except requests.exceptions.RequestException as e:
-        logging.error(f"DeepSeek API Error: {e}")
+        logging.error(f"Together AI API Error: {e}")
         return "⚠️ Error generating response. Please try again later. ⚠️"
 
 # Slack event listener
@@ -70,11 +70,11 @@ def handle_mention(event, say):
 
         message_history[thread_ts].append({"role": "user", "content": user_message})
 
-        # Prepare context for DeepSeek API (last 5 messages)
+        # Prepare context for Together AI API (last 5 messages)
         context = message_history[thread_ts][-5:]
 
-        # Get AI response from DeepSeek
-        bot_response = get_deepseek_response(context)
+        # Get AI response from Together AI
+        bot_response = get_together_response(context)
 
         # Add bot response to history
         message_history[thread_ts].append({"role": "assistant", "content": bot_response})
