@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 import os
-from flask import Flask, request, redirect, jsonify
+from flask import Flask, request
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
 import requests
@@ -11,10 +11,6 @@ load_dotenv()
 flask_app = Flask(__name__)
 
 logging.basicConfig(level=logging.INFO)
-
-SLACK_CLIENT_ID = os.environ.get("SLACK_CLIENT_ID")
-SLACK_CLIENT_SECRET = os.environ.get("SLACK_CLIENT_SECRET")
-SLACK_REDIRECT_URI = os.environ.get("SLACK_REDIRECT_URI")
 
 slack_app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
@@ -33,9 +29,13 @@ def get_huggingface_response(messages):
         "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
         "Content-Type": "application/json"
     }
+
+    # Extract the latest user message as a string
     user_message = messages[-1]["content"]
 
-    payload = {"inputs": user_message}
+    payload = {
+        "inputs": user_message
+    }
 
     try:
         response = requests.post(url, json=payload, headers=headers)
@@ -55,6 +55,8 @@ def handle_mention(event, say):
         logging.info(f"Received event: {event}")
 
         user_message = event.get("text", "")
+        user_id = event.get("user", "Unknown")
+        channel_id = event.get("channel", "Unknown")
         thread_ts = event.get("thread_ts", event["ts"])  # Use thread timestamp if available
 
         if not user_message:
@@ -83,27 +85,6 @@ def handle_mention(event, say):
     except Exception as e:
         logging.error(f"Error in handle_mention: {e}", exc_info=True)
         say(text="Sorry, I encountered an error. Please try again later.", thread_ts=thread_ts)
-
-# OAuth Route: Handles the Slack installation process
-@flask_app.route("/slack/oauth/callback")
-def oauth_callback():
-    code = request.args.get("code")
-    if not code:
-        return "Error: Missing 'code' parameter", 400
-
-    # Exchange code for access token
-    response = requests.post("https://slack.com/api/oauth.v2.access", data={
-        "client_id": SLACK_CLIENT_ID,
-        "client_secret": SLACK_CLIENT_SECRET,
-        "code": code,
-        "redirect_uri": SLACK_REDIRECT_URI
-    })
-
-    data = response.json()
-    if not data.get("ok"):
-        return f"Error: {data.get('error')}", 400
-
-    return "✅ Bot installed successfully! You can now mention @YourBotName in Slack.", 200
 
 # Flask route for Slack events
 @flask_app.route("/slack/events", methods=["POST"])
