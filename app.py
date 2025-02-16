@@ -30,19 +30,23 @@ message_history = {}
 
 # Function to call Hugging Face API
 def get_huggingface_response(messages):
-    url = "https://api-inference.huggingface.co/models/EleutherAI/gpt-neo-1.3B"  
+    url = "https://api-inference.huggingface.co/models/EleutherAI/gpt-neo-1.3B"
     headers = {
         "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
         "Content-Type": "application/json"
     }
+
+    # Extract the latest user message as a string
+    user_message = messages[-1]["content"]
+
     payload = {
-        "inputs": [{"role": msg["role"], "content": msg["content"]} for msg in messages]
+        "inputs": user_message
     }
 
     try:
         response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()  # Raise HTTP errors if any
-        return response.json()[0]["generated_text"]
+        return response.json()[0]["generated_text"]  # Extract response text
     except requests.exceptions.HTTPError as e:
         logging.error(f"Hugging Face API Error: {e.response.status_code} - {e.response.text}")
         return f"⚠️ API Error: {e.response.status_code} - {e.response.text} ⚠️"
