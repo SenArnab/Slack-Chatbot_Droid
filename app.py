@@ -30,7 +30,7 @@ message_history = {}
 
 # Function to call Hugging Face API
 def get_huggingface_response(messages):
-    url = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct"
+    url = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3"
     headers = {
         "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
         "Content-Type": "application/json"
