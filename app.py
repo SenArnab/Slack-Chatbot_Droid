@@ -1,13 +1,12 @@
 from dotenv import load_dotenv
 import os
-from flask import Flask, request, redirect, jsonify
+from flask import Flask, request
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
-from slack_bolt.oauth.oauth_settings import OAuthSettings
 import requests
 import logging
 
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
 
 # Initialize Flask app
@@ -16,87 +15,38 @@ flask_app = Flask(__name__)
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
-# Slack OAuth credentials
-SLACK_CLIENT_ID = os.environ.get("SLACK_CLIENT_ID")
-SLACK_CLIENT_SECRET = os.environ.get("SLACK_CLIENT_SECRET")
-SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET")
-SLACK_REDIRECT_URI = os.environ.get("SLACK_REDIRECT_URI")
+# Slack app setup
+slack_app = App(
+    token=os.environ.get("SLACK_BOT_TOKEN"),
+    signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
+)
+handler = SlackRequestHandler(slack_app)
 
 # Hugging Face API Key
 HUGGINGFACE_API_KEY = os.environ.get("HUGGINGFACE_API_KEY")
 
-# Dictionary to store installed workspace tokens (Replace with a database in production)
-installed_bots = {}
-
-# OAuth Settings
-oauth_settings = OAuthSettings(
-    client_id=SLACK_CLIENT_ID,
-    client_secret=SLACK_CLIENT_SECRET,
-    scopes=["app_mentions:read", "chat:write", "channels:history"],
-    redirect_uri=SLACK_REDIRECT_URI,
-)
-
-# ✅ FIXED: Removed "authorize"
-slack_app = App(
-    signing_secret=SLACK_SIGNING_SECRET,
-    oauth_settings=oauth_settings  # Keep only oauth_settings
-)
-
-# Flask Slack handler
-handler = SlackRequestHandler(slack_app)
-
-# Store installed bot tokens
-@slack_app.event("tokens_revoked")
-def handle_token_revocation(event):
-    team_id = event["team_id"]
-    if team_id in installed_bots:
-        del installed_bots[team_id]
-
-@slack_app.event("app_home_opened")
-def handle_app_home_opened(event, client):
-    team_id = event["team_id"]
-    if team_id not in installed_bots:
-        client.chat_postMessage(channel=event["user"], text="Please install the app first.")
-
-# OAuth Callback Route
-@flask_app.route("/slack/oauth/callback")
-def oauth_callback():
-    code = request.args.get("code")
-    if not code:
-        return "Error: Missing 'code' parameter", 400
-
-    # Exchange code for token
-    response = requests.post("https://slack.com/api/oauth.v2.access", data={
-        "client_id": SLACK_CLIENT_ID,
-        "client_secret": SLACK_CLIENT_SECRET,
-        "code": code,
-        "redirect_uri": SLACK_REDIRECT_URI
-    })
-
-    data = response.json()
-    if not data.get("ok"):
-        return f"Error: {data.get('error')}", 400
-
-    # Store bot token for the workspace
-    team_id = data["team"]["id"]
-    bot_token = data["access_token"]
-    installed_bots[team_id] = bot_token
-
-    return "✅ Bot installed successfully! You can now mention @YourBotName in Slack.", 200
+# In-memory storage for message history
+message_history = {}
 
 # Function to call Hugging Face API
-def get_huggingface_response(user_message):
+def get_huggingface_response(messages):
     url = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3"
     headers = {
         "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
         "Content-Type": "application/json"
     }
-    payload = {"inputs": user_message}
+
+    # Extract the latest user message as a string
+    user_message = messages[-1]["content"]
+
+    payload = {
+        "inputs": user_message
+    }
 
     try:
         response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        return response.json()[0]["generated_text"]
+        response.raise_for_status()  # Raise HTTP errors if any
+        return response.json()[0]["generated_text"]  # Extract response text
     except requests.exceptions.HTTPError as e:
         logging.error(f"Hugging Face API Error: {e.response.status_code} - {e.response.text}")
         return f"⚠️ API Error: {e.response.status_code} - {e.response.text} ⚠️"
@@ -104,13 +54,15 @@ def get_huggingface_response(user_message):
         logging.error(f"Hugging Face API Error: {e}")
         return "⚠️ Error generating response. Please try again later. ⚠️"
 
-# Slack event listener for @mentions
+# Slack event listener
 @slack_app.event("app_mention")
 def handle_mention(event, say):
     try:
         logging.info(f"Received event: {event}")
 
-        user_message = event.get("text", "").replace(f"<@{event['user']}>", "").strip()
+        user_message = event.get("text", "")
+        user_id = event.get("user", "Unknown")
+        channel_id = event.get("channel", "Unknown")
         thread_ts = event.get("thread_ts", event["ts"])  # Use thread timestamp if available
 
         if not user_message:
@@ -118,8 +70,20 @@ def handle_mention(event, say):
             say(text="Sorry, I couldn't understand your message.", thread_ts=thread_ts)
             return
 
+        # Initialize message history for the thread if it doesn't exist
+        if thread_ts not in message_history:
+            message_history[thread_ts] = []
+
+        message_history[thread_ts].append({"role": "user", "content": user_message})
+
+        # Prepare context for Hugging Face API (last 5 messages)
+        context = message_history[thread_ts][-5:]
+
         # Get AI response from Hugging Face
-        bot_response = get_huggingface_response(user_message)
+        bot_response = get_huggingface_response(context)
+
+        # Add bot response to history
+        message_history[thread_ts].append({"role": "assistant", "content": bot_response})
 
         # Reply in Slack
         say(text=bot_response, thread_ts=thread_ts)
