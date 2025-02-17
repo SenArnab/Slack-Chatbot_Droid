@@ -28,7 +28,7 @@ HUGGINGFACE_API_KEY = os.environ.get("HUGGINGFACE_API_KEY")
 # Dictionary to store installed workspace tokens (Replace with a database in production)
 installed_bots = {}
 
-# ✅ Fix: Using OAuthSettings instead of OAuthFlow
+# OAuth Settings
 oauth_settings = OAuthSettings(
     client_id=SLACK_CLIENT_ID,
     client_secret=SLACK_CLIENT_SECRET,
@@ -36,20 +36,10 @@ oauth_settings = OAuthSettings(
     redirect_uri=SLACK_REDIRECT_URI,
 )
 
-# ✅ Fix: Explicitly define `authorize` function
-def authorize(enterprise_id, team_id):
-    logging.info(f"Authorizing team: {team_id}")
-    if team_id in installed_bots:
-        logging.info(f"Token found for team: {team_id}")
-        return {"bot_token": installed_bots[team_id]}
-    logging.error(f"No token found for team: {team_id}")
-    return None  # Slack will return an auth error if not found
-
-# ✅ Fix: Initialize Slack App with `oauth_settings`
+# ✅ FIXED: Removed "authorize"
 slack_app = App(
     signing_secret=SLACK_SIGNING_SECRET,
-    oauth_settings=oauth_settings,  # ✅ Correct way to handle OAuth
-    authorize=authorize  # ✅ Ensure each workspace gets the correct bot token
+    oauth_settings=oauth_settings  # Keep only oauth_settings
 )
 
 # Flask Slack handler
