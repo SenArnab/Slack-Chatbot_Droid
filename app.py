@@ -4,6 +4,7 @@ from flask import Flask, request, redirect, jsonify
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
 from slack_bolt.oauth.oauth_settings import OAuthSettings
+from slack_bolt.oauth import OAuthFlow
 import requests
 import logging
 
@@ -28,18 +29,27 @@ HUGGINGFACE_API_KEY = os.environ.get("HUGGINGFACE_API_KEY")
 # Dictionary to store installed workspace tokens (Replace with a database in production)
 installed_bots = {}
 
-# OAuth Settings
-oauth_settings = OAuthSettings(
+# OAuth Flow Setup
+oauth_flow = OAuthFlow(
     client_id=SLACK_CLIENT_ID,
     client_secret=SLACK_CLIENT_SECRET,
-    scopes=["app_mentions:read", "chat:write", "channels:history"],
     redirect_uri=SLACK_REDIRECT_URI,
 )
 
-# ✅ FIXED: Removed "authorize"
+# ✅ Fix: Explicitly define `authorize` function
+def authorize(enterprise_id, team_id):
+    logging.info(f"Authorizing team: {team_id}")
+    if team_id in installed_bots:
+        logging.info(f"Token found for team: {team_id}")
+        return {"bot_token": installed_bots[team_id]}
+    logging.error(f"No token found for team: {team_id}")
+    return None  # Slack will return an auth error if not found
+
+# ✅ Fix: Initialize Slack App with `oauth_flow` and `authorize`
 slack_app = App(
     signing_secret=SLACK_SIGNING_SECRET,
-    oauth_settings=oauth_settings  # Keep only oauth_settings
+    oauth_flow=oauth_flow,  # Replaces `oauth_settings`
+    authorize=authorize
 )
 
 # Flask Slack handler
