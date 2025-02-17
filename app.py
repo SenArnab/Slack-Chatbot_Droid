@@ -36,10 +36,20 @@ oauth_settings = OAuthSettings(
     redirect_uri=SLACK_REDIRECT_URI,
 )
 
-# Initialize Slack App with OAuth
+# Authorize function to fetch bot token for a workspace
+def authorize(team_id: str):
+    logging.info(f"Authorizing team: {team_id}")
+    if team_id in installed_bots:
+        logging.info(f"Token found for team: {team_id}")
+        return installed_bots[team_id]
+    logging.error(f"No token found for team: {team_id}")
+    return None
+
+# Initialize Slack App with OAuth and authorize function
 slack_app = App(
     signing_secret=SLACK_SIGNING_SECRET,
-    oauth_settings=oauth_settings
+    oauth_settings=oauth_settings,
+    authorize=authorize  # Add the authorize function
 )
 
 # Flask Slack handler
@@ -78,7 +88,9 @@ def oauth_callback():
         return f"Error: {data.get('error')}", 400
 
     # Store bot token for the workspace
-    installed_bots[data["team"]["id"]] = data["access_token"]
+    team_id = data["team"]["id"]
+    bot_token = data["access_token"]
+    installed_bots[team_id] = bot_token
 
     return "✅ Bot installed successfully! You can now mention @YourBotName in Slack.", 200
 
